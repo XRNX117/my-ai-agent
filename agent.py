@@ -21,9 +21,82 @@ from langchain_core.prompts import PromptTemplate
 
 from tools import get_weather, get_news, calculate
 from database import get_recent_messages, save_message
+from memory import retrieve_memories, extract_and_store
 from config import HISTORY_LIMIT
 
 load_dotenv()
+
+# ════════════════════════════════════════════════════════
+# 安全工具包装层 —— 输入校验 + 异常捕获 + 纠错提示
+# ════════════════════════════════════════════════════════
+
+# 已知城市列表（用于模糊匹配与纠错提示）
+_KNOWN_CITIES = ["北京", "上海", "广州", "深圳", "杭州", "成都", "武汉", "南京"]
+
+
+def _safe_get_weather(city: str) -> str:
+    """
+    天气查询（带输入校验与自动纠错提示）。
+    如果城市名不在已知列表中，尝试模糊匹配并建议正确名称，
+    以便 ReAct Agent 在下一次迭代中自动修正。
+    """
+    city = city.strip()
+
+    # ── 精确匹配：直接调用原函数 ──
+    if city in _KNOWN_CITIES:
+        return get_weather(city)
+
+    # ── 模糊匹配：按字符重叠率寻找最可能的正确城市 ──
+    city_set = set(city)
+    best_match = None
+    best_score = 0.0
+    for known in _KNOWN_CITIES:
+        known_set = set(known)
+        overlap = len(city_set & known_set)
+        # 用 Jaccard 系数的近似：重叠 / 较短的集合大小
+        score = overlap / min(len(city_set), len(known_set))
+        if score > best_score:
+            best_score = score
+            best_match = known
+
+    # ── 匹配度足够高 → 给出纠错建议 ──
+    if best_match and best_score >= 0.4:
+        return (
+            f"❌ 错误：未找到城市「{city}」。\n"
+            f"💡 猜测您想查询的是「{best_match}」，"
+            f"请使用正确的城市名称「{best_match}」重新调用 get_weather 工具。"
+        )
+
+    # ── 完全不匹配 → 列出可用城市 ──
+    cities_str = "、".join(_KNOWN_CITIES)
+    return (
+        f"❌ 错误：未找到城市「{city}」。\n"
+        f"支持的城市：{cities_str}。\n"
+        f"请使用上述城市之一重新调用 get_weather 工具。"
+    )
+
+
+def _safe_calculate(expression: str) -> str:
+    """安全计算器（带异常捕获与重试提示）。"""
+    try:
+        return calculate(expression)
+    except (ValueError, ZeroDivisionError, SyntaxError) as e:
+        return (
+            f"❌ 计算失败：{e}。\n"
+            f"请检查表达式语法是否正确，修正后重新调用 calculate 工具。\n"
+            f"支持的运算：+, -, *, /, //, %, **, ()。"
+        )
+    except Exception as e:
+        return f"❌ 计算发生未知错误：{e}。请简化表达式后重试。"
+
+
+def _safe_get_news() -> str:
+    """新闻查询（带异常捕获）。"""
+    try:
+        return get_news()
+    except Exception as e:
+        return f"❌ 获取新闻失败：{e}。请稍后重试，或告知用户当前无法获取新闻。"
+
 
 # ════════════════════════════════════════════════════════
 # LLM 初始化（DeepSeek，OpenAI 兼容）
@@ -38,22 +111,22 @@ llm = ChatOpenAI(
 )
 
 # ════════════════════════════════════════════════════════
-# LangChain 工具（由 tools.py 的函数包装而来）
+# LangChain 工具 —— 使用安全包装函数
 # ════════════════════════════════════════════════════════
 
 langchain_tools = [
     StructuredTool.from_function(
-        func=get_weather,
+        func=_safe_get_weather,
         name="get_weather",
         description="查询指定城市的实时天气信息。参数 city 为城市名称，例如：北京、上海、广州、深圳。",
     ),
     StructuredTool.from_function(
-        func=get_news,
+        func=_safe_get_news,
         name="get_news",
         description="获取国内最新热门新闻列表。无需参数，直接调用即可获得 8 条热点新闻。",
     ),
     StructuredTool.from_function(
-        func=calculate,
+        func=_safe_calculate,
         name="calculate",
         description=(
             "执行安全的数学计算。参数 expression 为数学表达式，"
@@ -63,10 +136,10 @@ langchain_tools = [
 ]
 
 # ════════════════════════════════════════════════════════
-# ReAct 提示词模板
+# ReAct 提示词模板（含自我修正规则）
 # ════════════════════════════════════════════════════════
 
-REACT_PROMPT = PromptTemplate.from_template("""你是一个乐于助人的中文 AI 助手，具备自主推理和工具调用能力。
+REACT_PROMPT = PromptTemplate.from_template("""你是一个乐于助人的中文 AI 助手，具备自主推理、工具调用和自我修正能力。
 
 你可以使用以下工具来回答用户的问题：
 
@@ -82,6 +155,18 @@ Observation: 工具执行后返回的结果
 ...（上述 Thought / Action / Action Input / Observation 可重复多次）
 Thought: 我现在已经掌握了足够的信息，可以给出最终答案
 Final Answer: 用中文对用户问题给出的最终回答（直接回复，不要使用工具名称或 JSON）
+
+---- 🔧 自我修正规则 ----
+如果 Observation 以 "❌ 错误" 开头，说明工具调用失败。你必须：
+1. 在下一个 Thought 中记录："上次调用失败，我将分析错误原因并修正参数后重试"。
+2. 仔细阅读错误信息中的 💡 修正建议（例如建议的正确城市名）。
+3. 发起一个新的 Action，使用修正后的参数再次调用工具。
+4. 如果重试后仍然失败，在 Final Answer 中如实告知用户失败原因，并提供手动操作建议。
+5. 最多重试 2 次。
+
+---- 🧠 用户长期记忆（语义检索到的偏好/事实，可辅助个性化回答）----
+{long_term_memory}
+---- 以上是长期记忆 ----
 
 ---- 对话历史 ----
 {chat_history}
@@ -132,13 +217,18 @@ def chat_with_agent(user_query: str, session_id: str) -> tuple[str, list[dict]]:
         chat_history_parts.append(f"{role_label}: {msg['content']}")
     chat_history_str = "\n".join(chat_history_parts) if chat_history_parts else "（新对话）"
 
-    # ── 2. 持久化用户消息 ──
+    # ── 2. 检索长期记忆（语义搜索）──
+    memories = retrieve_memories(user_query, n=3)
+    long_term_memory_str = "\n".join(f"- {m}" for m in memories) if memories else "（暂无相关长期记忆）"
+
+    # ── 3. 持久化用户消息 ──
     save_message(session_id, "user", user_query)
 
-    # ── 3. 执行 ReAct Agent ──
+    # ── 4. 执行 ReAct Agent（注入长期记忆）──
     result = agent_executor.invoke({
         "input": user_query,
         "chat_history": chat_history_str,
+        "long_term_memory": long_term_memory_str,
     })
 
     reply = result["output"]
@@ -157,15 +247,25 @@ def chat_with_agent(user_query: str, session_id: str) -> tuple[str, list[dict]]:
                     thought_text = thought_text.split(keyword)[0]
             thought_text = thought_text.strip()
 
+        # 判断这一轮是否为错误（observation 以 ❌ 开头）
+        obs_text = str(observation)
+        is_error = obs_text.startswith("❌")
+
         thoughts.append({
             "thought": thought_text,
             "action": action.tool,
             "action_input": str(action.tool_input),
-            "observation": str(observation)[:500],
+            "observation": obs_text[:500],
+            "is_error": is_error,
         })
 
     # ── 5. 持久化 AI 回复 ──
     save_message(session_id, "assistant", reply)
+
+    # ── 6. 提取用户偏好/事实 → 存入长期记忆 ──
+    stored = extract_and_store(user_query, reply, session_id)
+    if stored > 0:
+        print(f"[Memory] 从本轮对话提取并存储了 {stored} 条长期记忆")
 
     return reply, thoughts
 
@@ -184,11 +284,13 @@ if __name__ == "__main__":
     print(f"测试会话 ID: {test_sid[:8]}...")
 
     conversation = [
+        "我喜欢吃川菜，住在北京朝阳区",     # ← 偏好声明，触发长期记忆存储
         "查一下北京的天气",
         "那上海呢？",
-        "今天有什么热门新闻？",
+        "查一下北就的天气",               # ← 输入错误，触发自我修正
+        "推荐点好吃的呗",                  # ← 依赖长期记忆（知道爱吃川菜、住北京）
         "帮我算一下 1234 * 5678 等于多少",
-        "帮我总结一下刚才查过的两个城市分别什么天气",
+        "帮我算一下 1 / 0 等于多少",      # ← 除以零，触发错误重试
     ]
 
     for i, query in enumerate(conversation, 1):
@@ -200,10 +302,13 @@ if __name__ == "__main__":
         if thoughts:
             print(f"\n思考过程（{len(thoughts)} 步）：")
             for j, t in enumerate(thoughts, 1):
-                print(f"  Step {j}:")
+                err_tag = " ⚠️ 错误重试" if t.get("is_error") else ""
+                print(f"  Step {j}{err_tag}:")
                 print(f"    💭 {t['thought'][:80]}")
                 print(f"    🔧 {t['action']}({t['action_input']})")
                 print(f"    👁️  {t['observation'][:80]}")
 
+    from memory import memory_count
     all_history = get_recent_messages(test_sid, limit=100)
     print(f"\n持久化验证：{len(all_history)} 条消息已存入 SQLite")
+    print(f"长期记忆：{memory_count()} 条偏好已存入 ChromaDB")

@@ -28,8 +28,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# 预加载前端页面
-INDEX_HTML = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
+# 前端页面路径（每次请求时实时读取，开发期修改 HTML 无需重启）
+INDEX_PATH = Path(__file__).parent / "index.html"
 
 
 @app.post("/chat", response_model=ChatResponse)
@@ -60,8 +60,8 @@ async def chat_endpoint(req: ChatRequest) -> ChatResponse:
 
 @app.get("/", response_class=HTMLResponse)
 async def index():
-    """返回前端聊天页面"""
-    return INDEX_HTML
+    """返回前端聊天页面（每次都重新读取文件）"""
+    return HTMLResponse(INDEX_PATH.read_text(encoding="utf-8"))
 
 
 @app.get("/health")

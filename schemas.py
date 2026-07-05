@@ -43,6 +43,10 @@ class ThoughtStep(BaseModel):
         description="工具执行后返回的结果",
         examples=["北京今天晴，22°C，微风"],
     )
+    is_error: bool = Field(
+        default=False,
+        description="该步骤是否因工具调用失败而触发了自我修正重试",
+    )
 
 
 class ChatResponse(BaseModel):

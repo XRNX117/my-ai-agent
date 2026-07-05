@@ -5,244 +5,424 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>AI 智能体</title>
 <style>
+  /* ═══════════════════════════════════════════════ */
+  /*  设计令牌                                    */
+  /* ═══════════════════════════════════════════════ */
   :root {
-    --bg: #f7f7f8;
-    --card: #ffffff;
-    --border: #e5e5e5;
-    --text: #1f1f1f;
-    --sub: #6b6b6b;
-    --user-bubble: #e8f0fe;
-    --agent-bubble: #ffffff;
-    --accent: #10a37f;
-    --accent-hover: #0e8c6b;
-    --danger: #ef4444;
-    --radius: 20px;
-    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+    --bg-start: #f9fafb;
+    --bg-end: #f0f1f4;
+    --surface: #ffffff;
+    --border: #e8eaed;
+    --text: #1a1a2e;
+    --sub: #6b7280;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,.04), 0 1px 3px rgba(0,0,0,.06);
+    --shadow-md: 0 4px 12px rgba(0,0,0,.06), 0 1px 4px rgba(0,0,0,.04);
+    --shadow-lg: 0 8px 30px rgba(0,0,0,.08), 0 2px 8px rgba(0,0,0,.04);
+
+    /* 用户气泡 - 紫蓝渐变 */
+    --user-grad: linear-gradient(135deg, #6366f1 0%, #7c3aed 50%, #8b5cf6 100%);
+    --user-text: #ffffff;
+
+    /* AI 气泡 - 白卡 */
+    --agent-bg: #ffffff;
+    --agent-border: #e8eaed;
+
+    /* 思考链颜色 */
+    --think-blue: #eef2ff;
+    --think-blue-border: #6366f1;
+    --think-blue-text: #4f46e5;
+
+    --action-amber: #fffbeb;
+    --action-amber-border: #f59e0b;
+    --action-amber-text: #d97706;
+
+    --obs-green: #ecfdf5;
+    --obs-green-border: #10b981;
+    --obs-green-text: #059669;
+
+    --radius-sm: 10px;
+    --radius: 18px;
+    --radius-lg: 28px;
   }
 
   * { margin: 0; padding: 0; box-sizing: border-box; }
 
   body {
-    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
-    background: var(--bg);
+    font-family: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: linear-gradient(180deg, var(--bg-start) 0%, var(--bg-end) 100%);
     color: var(--text);
     height: 100dvh;
     display: flex;
     flex-direction: column;
-    max-width: 800px;
+    max-width: 820px;
     margin: 0 auto;
+    -webkit-font-smoothing: antialiased;
   }
 
-  /* ── 顶栏 ── */
+  /* ═══════════════════════════════════════════════ */
+  /*  顶栏 - 毛玻璃                                */
+  /* ═══════════════════════════════════════════════ */
   header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 12px 20px;
-    background: var(--card);
-    border-bottom: 1px solid var(--border);
+    padding: 14px 24px;
+    background: rgba(255,255,255,.72);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border-bottom: 1px solid rgba(0,0,0,.06);
     position: sticky;
     top: 0;
-    z-index: 10;
+    z-index: 20;
   }
-  header h1 { font-size: 18px; font-weight: 600; }
+  header .brand {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  header .brand .logo {
+    width: 34px; height: 34px;
+    border-radius: 10px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 18px;
+    box-shadow: 0 2px 8px rgba(99,102,241,.35);
+  }
+  header .brand h1 {
+    font-size: 17px;
+    font-weight: 650;
+    letter-spacing: -.3px;
+    color: #1a1a2e;
+  }
   header button {
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    padding: 8px 18px;
-    border: 2px solid #d0d0d0;
-    border-radius: 24px;
+    gap: 5px;
+    padding: 7px 16px;
+    border: 1.5px solid #d1d5db;
+    border-radius: 22px;
     background: #fff;
     cursor: pointer;
     font-size: 13px;
-    font-weight: 500;
-    color: var(--text);
+    font-weight: 520;
+    color: #374151;
     transition: all .2s ease;
     white-space: nowrap;
+    font-family: inherit;
   }
   header button:hover {
-    background: #f5f5f5;
-    border-color: #b0b0b0;
-    transform: translateY(-1px);
-    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+    background: #f9fafb;
+    border-color: #9ca3af;
+    box-shadow: 0 2px 8px rgba(0,0,0,.06);
   }
-  header button:active { transform: translateY(0); }
-  header button svg { width: 15px; height: 15px; flex-shrink: 0; }
+  header button:active { transform: scale(.97); }
+  header button svg { width: 14px; height: 14px; flex-shrink: 0; }
 
-  /* ── 聊天区 ── */
+  /* ═══════════════════════════════════════════════ */
+  /*  聊天区                                      */
+  /* ═══════════════════════════════════════════════ */
   main {
     flex: 1;
     overflow-y: auto;
-    padding: 20px 0;
+    padding: 16px 0 8px;
     display: flex;
     flex-direction: column;
-    gap: 4px;
+    gap: 6px;
+    scroll-behavior: smooth;
   }
+  main::-webkit-scrollbar { width: 5px; }
+  main::-webkit-scrollbar-thumb { background: #d1d5db; border-radius: 10px; }
 
+  /* ── 消息行 ── */
   .msg {
     display: flex;
-    gap: 12px;
-    padding: 12px 20px;
-    animation: fadeIn .25s ease;
+    gap: 10px;
+    padding: 8px 22px;
+    animation: msgIn .3s ease;
+    align-items: flex-end;
   }
-  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } }
+  @keyframes msgIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
 
+  /* 用户消息 - 右对齐 */
+  .msg.user {
+    flex-direction: row-reverse;
+    padding-left: 60px;
+  }
+  .msg.agent {
+    padding-right: 60px;
+  }
+
+  /* ── 头像 ── */
   .msg .avatar {
-    width: 32px; height: 32px; border-radius: 4px;
+    width: 34px; height: 34px;
+    border-radius: 50%;
     display: flex; align-items: center; justify-content: center;
-    font-size: 16px; flex-shrink: 0;
+    font-size: 17px;
+    flex-shrink: 0;
+    box-shadow: var(--shadow-sm);
   }
-  .msg.user .avatar { background: #d1e7dd; }
-  .msg.agent .avatar { background: #10a37f; color: #fff; }
+  .msg.user .avatar {
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+  }
+  .msg.agent .avatar {
+    background: #f3f4f6;
+    border: 1px solid #e5e7eb;
+  }
 
+  /* ── 气泡 ── */
   .msg .bubble {
-    max-width: 85%;
+    max-width: 82%;
     padding: 10px 16px;
-    border-radius: 12px;
-    font-size: 15px;
-    line-height: 1.65;
+    font-size: 14.5px;
+    line-height: 1.62;
     word-break: break-word;
+    position: relative;
   }
+  /* 用户气泡 */
   .msg.user .bubble {
-    background: var(--user-bubble);
-    border-bottom-right-radius: 4px;
+    background: var(--user-grad);
+    color: var(--user-text);
+    border-radius: var(--radius) var(--radius) 6px var(--radius);
+    box-shadow: 0 2px 10px rgba(99,102,241,.25);
   }
+  /* AI 气泡 */
   .msg.agent .bubble {
-    background: var(--agent-bubble);
-    border: 1px solid var(--border);
-    border-bottom-left-radius: 4px;
+    background: var(--agent-bg);
+    color: var(--text);
+    border-radius: var(--radius) var(--radius) var(--radius) 6px;
+    border: 1px solid var(--agent-border);
+    box-shadow: var(--shadow-sm);
   }
 
+  /* typing 动画 */
   .agent-typing .bubble {
     color: var(--sub);
-    font-style: italic;
+    display: flex;
+    align-items: center;
+    gap: 6px;
   }
-  .dot-pulse {
-    display: inline-block; width: 8px; height: 8px;
-    border-radius: 50%; background: #10a37f;
-    animation: dotPulse 1.2s infinite ease-in-out;
-    margin-right: 4px; vertical-align: middle;
+  .dots {
+    display: inline-flex; gap: 4px; align-items: center;
   }
-  @keyframes dotPulse {
-    0%, 80%, 100% { opacity: 0.2; transform: scale(0.8); }
-    40% { opacity: 1; transform: scale(1.2); }
+  .dots span {
+    width: 7px; height: 7px;
+    border-radius: 50%;
+    background: #9ca3af;
+    animation: dotBounce 1.4s infinite ease-in-out both;
+  }
+  .dots span:nth-child(1) { animation-delay: 0s; }
+  .dots span:nth-child(2) { animation-delay: .16s; }
+  .dots span:nth-child(3) { animation-delay: .32s; }
+  @keyframes dotBounce {
+    0%, 80%, 100% { opacity: .2; transform: scale(.7); }
+    40% { opacity: 1; transform: scale(1); }
   }
 
-  /* ── 底部输入区 ── */
+  /* ═══════════════════════════════════════════════ */
+  /*  思考链 - 折叠卡片                            */
+  /* ═══════════════════════════════════════════════ */
+  .thought-chain {
+    padding: 2px 22px 2px 56px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .msg.user ~ .thought-chain {
+    padding-left: 60px;
+    padding-right: 22px;
+  }
+
+  .tc-details {
+    border-radius: var(--radius-sm);
+    border-left: 3px solid;
+    overflow: hidden;
+    animation: msgIn .3s ease both;
+    max-width: 92%;
+  }
+  .tc-details[open] {
+    box-shadow: var(--shadow-sm);
+  }
+
+  /* 颜色变体 */
+  .tc-details.t-thought {
+    background: var(--think-blue);
+    border-left-color: var(--think-blue-border);
+  }
+  .tc-details.t-action {
+    background: var(--action-amber);
+    border-left-color: var(--action-amber-border);
+  }
+  .tc-details.t-observation {
+    background: var(--obs-green);
+    border-left-color: var(--obs-green-border);
+  }
+
+  /* summary 标题行 */
+  .tc-details summary {
+    list-style: none;
+    cursor: pointer;
+    padding: 8px 12px;
+    font-size: 12.5px;
+    font-weight: 580;
+    letter-spacing: .2px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    user-select: none;
+    transition: background .15s;
+  }
+  .tc-details summary:hover { background: rgba(0,0,0,.03); }
+  .tc-details summary::-webkit-details-marker { display: none; }
+
+  .tc-details.t-thought summary { color: var(--think-blue-text); }
+  .tc-details.t-action summary   { color: var(--action-amber-text); }
+  .tc-details.t-observation summary { color: var(--obs-green-text); }
+
+  /* 错误 / 自我修正 */
+  .tc-details.t-error {
+    background: #fef2f2;
+    border-left-color: #ef4444;
+  }
+  .tc-details.t-error summary { color: #dc2626; }
+  .tc-details.t-error .tc-body { color: #991b1b; }
+  .tc-details.t-error summary::before {
+    content: '🔄 ';
+    font-size: 14px;
+  }
+
+  /* 展开箭头 */
+  .tc-details summary::after {
+    content: '▸';
+    margin-left: auto;
+    font-size: 10px;
+    transition: transform .2s;
+    opacity: .55;
+  }
+  .tc-details[open] summary::after {
+    transform: rotate(90deg);
+  }
+
+  /* 卡片内容 */
+  .tc-body {
+    padding: 0 12px 10px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: #444;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  /* ═══════════════════════════════════════════════ */
+  /*  底部输入区 - 悬浮 Pill                        */
+  /* ═══════════════════════════════════════════════ */
   footer {
-    padding: 12px 20px 20px;
-    background: var(--bg);
+    padding: 8px 20px 14px;
     position: sticky;
     bottom: 0;
+    z-index: 10;
+    background: linear-gradient(180deg, transparent 0%, var(--bg-end) 40%);
   }
   .input-wrap {
     display: flex;
     align-items: flex-end;
     gap: 10px;
-    background: var(--card);
-    border: 1px solid var(--border);
-    border-radius: var(--radius);
-    padding: 8px 8px 8px 18px;
-    box-shadow: var(--shadow);
+    background: var(--surface);
+    border: 1.5px solid #e2e4e9;
+    border-radius: var(--radius-lg);
+    padding: 6px 6px 6px 20px;
+    box-shadow: var(--shadow-lg);
+    transition: border-color .2s, box-shadow .2s;
+  }
+  .input-wrap:focus-within {
+    border-color: #a5b4fc;
+    box-shadow: 0 4px 20px rgba(99,102,241,.12), 0 1px 4px rgba(0,0,0,.04);
   }
   .input-wrap textarea {
     flex: 1;
     border: none;
     outline: none;
     resize: none;
-    font-size: 15px;
+    font-size: 14.5px;
     font-family: inherit;
     line-height: 1.5;
     max-height: 120px;
     background: transparent;
     color: var(--text);
-    padding: 6px 0;
+    padding: 8px 0;
   }
-  .input-wrap textarea::placeholder { color: #aaa; }
+  .input-wrap textarea::placeholder { color: #b0b4bb; }
   .input-wrap button {
-    width: 38px; height: 38px;
+    width: 40px; height: 40px;
     border-radius: 50%;
     border: none;
-    background: var(--text);
+    background: linear-gradient(135deg, #6366f1, #7c3aed);
     color: #fff;
     cursor: pointer;
     flex-shrink: 0;
     display: flex; align-items: center; justify-content: center;
-    transition: background .15s, opacity .15s;
+    transition: all .2s;
+    box-shadow: 0 2px 8px rgba(99,102,241,.35);
   }
-  .input-wrap button:hover { background: #333; }
-  .input-wrap button:disabled { opacity: .35; cursor: not-allowed; }
+  .input-wrap button:hover {
+    background: linear-gradient(135deg, #4f46e5, #6d28d9);
+    box-shadow: 0 4px 14px rgba(99,102,241,.45);
+    transform: scale(1.04);
+  }
+  .input-wrap button:active { transform: scale(.95); }
+  .input-wrap button:disabled {
+    opacity: .4;
+    cursor: not-allowed;
+    box-shadow: none;
+    transform: none;
+  }
   .input-wrap button svg { width: 18px; height: 18px; }
 
-  /* ── 思考过程卡片 ── */
-  .thought-chain {
-    padding: 4px 20px 4px 56px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+  /* ═══════════════════════════════════════════════ */
+  /*  欢迎页                                      */
+  /* ═══════════════════════════════════════════════ */
+  .welcome {
+    text-align: center;
+    padding: 60px 20px 20px;
+    animation: msgIn .5s ease;
   }
-  .thought-card {
-    font-size: 13px;
-    line-height: 1.55;
-    padding: 8px 12px;
-    border-radius: 10px;
-    border-left: 3px solid #aaa;
-    background: #fafafa;
-    animation: slideIn .35s ease both;
-    max-width: 95%;
-    word-break: break-word;
+  .welcome .wl-icon {
+    width: 64px; height: 64px;
+    border-radius: 18px;
+    background: linear-gradient(135deg, #6366f1, #8b5cf6);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 32px;
+    margin-bottom: 16px;
+    box-shadow: 0 6px 20px rgba(99,102,241,.3);
   }
-  .thought-card .label {
-    font-weight: 600;
-    font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: .5px;
-    margin-bottom: 3px;
-  }
-  .thought-card .body {
-    color: #444;
-  }
+  .welcome h2 { font-size: 20px; font-weight: 650; margin-bottom: 8px; }
+  .welcome p  { font-size: 14px; color: var(--sub); max-width: 320px; margin: 0 auto; line-height: 1.6; }
 
-  /* 思考 */
-  .t-thought {
-    border-left-color: #6366f1;
-    background: #eef2ff;
-  }
-  .t-thought .label { color: #4f46e5; }
-
-  /* 行动 */
-  .t-action {
-    border-left-color: #f59e0b;
-    background: #fffbeb;
-  }
-  .t-action .label { color: #d97706; }
-
-  /* 观察 */
-  .t-observation {
-    border-left-color: #10b981;
-    background: #ecfdf5;
-  }
-  .t-observation .label { color: #059669; }
-
-  @keyframes slideIn {
-    from { opacity: 0; transform: translateY(10px); }
-    to   { opacity: 1; transform: translateY(0); }
-  }
-
-  /* ── 小屏适配 ── */
-  @media (max-width: 500px) {
-    .msg { padding: 10px 12px; }
-    .msg .bubble { max-width: 92%; }
-    .thought-chain { padding: 4px 12px 4px 28px; }
-    footer { padding: 8px 10px 14px; }
+  /* ═══════════════════════════════════════════════ */
+  /*  响应式                                      */
+  /* ═══════════════════════════════════════════════ */
+  @media (max-width: 520px) {
+    .msg { padding: 6px 12px; }
+    .msg.user { padding-left: 36px; }
+    .msg.agent { padding-right: 36px; }
+    .msg .bubble { max-width: 90%; font-size: 14px; }
+    .thought-chain { padding-left: 28px; }
+    footer { padding: 6px 10px 10px; }
+    .input-wrap { padding: 4px 4px 4px 14px; }
+    header { padding: 10px 14px; }
+    header .brand h1 { font-size: 15px; }
   }
 </style>
 </head>
 <body>
 
 <header>
-  <h1>AI 智能体</h1>
+  <div class="brand">
+    <div class="logo">🤖</div>
+    <h1>AI 智能体</h1>
+  </div>
   <button onclick="newSession()" title="清空聊天记录并开启新对话">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
       <path d="M12 5v14M5 12h14"/>
@@ -263,8 +443,9 @@
       oninput="autoResize(this)"
     ></textarea>
     <button id="sendBtn" onclick="send()" title="发送">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
-        <path d="M5 12h14M12 5l7 7-7 7"/>
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+        <line x1="12" y1="5" x2="12" y2="19"/>
+        <polyline points="19 12 12 19 5 12"/>
       </svg>
     </button>
   </div>
@@ -303,19 +484,19 @@ function newSession() {
   location.reload();
 }
 
-// ── 渲染消息（同时写入 localStorage）──
+// ── 渲染消息 ──
 function appendMsg(role, text) {
   const main = document.getElementById('chat');
   const div = document.createElement('div');
   div.className = `msg ${role}`;
+  const ava = role === 'user' ? '👤' : '🤖';
   div.innerHTML = `
-    <div class="avatar">${role === 'user' ? '👤' : '🤖'}</div>
+    <div class="avatar">${ava}</div>
     <div class="bubble">${escapeHtml(text)}</div>
   `;
   main.appendChild(div);
   main.scrollTop = main.scrollHeight;
 
-  // 保存到 localStorage（欢迎消息不存——只有 user/agent 角色且非 typing 才存）
   if (role === 'user' || role === 'agent') {
     const history = loadHistory();
     history.push({ role, text });
@@ -335,13 +516,12 @@ async function send() {
   const text = input.value.trim();
   if (!text) return;
 
-  // 渲染用户消息
   appendMsg('user', text);
   input.value = '';
   autoResize(input);
   btn.disabled = true;
 
-  // 渲染"思考中…"占位
+  // typing 占位
   const main = document.getElementById('chat');
   const typing = document.createElement('div');
   typing.className = 'msg agent agent-typing';
@@ -349,7 +529,8 @@ async function send() {
   typing.innerHTML = `
     <div class="avatar">🤖</div>
     <div class="bubble">
-      <span class="dot-pulse"></span> 思考中…
+      <span class="dots"><span></span><span></span><span></span></span>
+      思考中…
     </div>
   `;
   main.appendChild(typing);
@@ -368,44 +549,46 @@ async function send() {
       throw new Error(data.response);
     }
 
-    // 移除 typing 占位
     typing.remove();
 
-    // ── 渲染思考过程卡片 ──
+    // ── 折叠式思考链 ──
     if (data.thoughts && data.thoughts.length > 0) {
       const chain = document.createElement('div');
       chain.className = 'thought-chain';
       data.thoughts.forEach((step, i) => {
-        // 思考卡片
+        // 思考
         if (step.thought) {
-          const card = document.createElement('div');
-          card.className = 'thought-card t-thought';
-          card.style.animationDelay = (i * 0.15) + 's';
-          card.innerHTML = `<div class="label">💭 思考</div><div class="body">${escapeHtml(step.thought)}</div>`;
-          chain.appendChild(card);
+          const el = document.createElement('details');
+          el.className = 'tc-details t-thought';
+          el.style.animationDelay = (i * 0.12) + 's';
+          el.innerHTML = `<summary>💭 思考中…</summary><div class="tc-body">${escapeHtml(step.thought)}</div>`;
+          chain.appendChild(el);
         }
-        // 行动卡片
+        // 工具调用
         if (step.action) {
-          const card = document.createElement('div');
-          card.className = 'thought-card t-action';
-          card.style.animationDelay = (i * 0.15 + 0.05) + 's';
-          card.innerHTML = `<div class="label">🔧 调用工具：${escapeHtml(step.action)}</div><div class="body">输入：${escapeHtml(step.action_input)}</div>`;
-          chain.appendChild(card);
+          const el = document.createElement('details');
+          el.className = 'tc-details t-action';
+          el.style.animationDelay = (i * 0.12 + .04) + 's';
+          const label = `🔧 调用工具：${escapeHtml(step.action)}`;
+          el.innerHTML = `<summary>${label}</summary><div class="tc-body">📥 输入参数：${escapeHtml(step.action_input)}</div>`;
+          chain.appendChild(el);
         }
-        // 观察卡片
+        // 观察（错误时标红）
         if (step.observation) {
-          const card = document.createElement('div');
-          card.className = 'thought-card t-observation';
-          card.style.animationDelay = (i * 0.15 + 0.1) + 's';
-          card.innerHTML = `<div class="label">👁️ 观察结果</div><div class="body">${escapeHtml(step.observation)}</div>`;
-          chain.appendChild(card);
+          const el = document.createElement('details');
+          const isErr = step.is_error === true;
+          el.className = 'tc-details ' + (isErr ? 't-error' : 't-observation');
+          el.style.animationDelay = (i * 0.12 + .08) + 's';
+          const label = isErr ? '⚠️ 工具异常（触发自我修正）' : '👁️ 观察结果';
+          el.innerHTML = `<summary>${label}</summary><div class="tc-body">${escapeHtml(step.observation)}</div>`;
+          if (isErr) el.open = true; // 错误卡片默认展开
+          chain.appendChild(el);
         }
       });
       main.appendChild(chain);
       main.scrollTop = main.scrollHeight;
     }
 
-    // ── 渲染 AI 最终回复 ──
     appendMsg('agent', data.response);
   } catch (err) {
     typing.remove();
@@ -418,7 +601,7 @@ async function send() {
   }
 }
 
-// ── 键盘事件：Enter 发送，Shift+Enter 换行 ──
+// ── 键盘 ──
 function handleKey(e) {
   if (e.key === 'Enter' && !e.shiftKey) {
     e.preventDefault();
@@ -426,30 +609,38 @@ function handleKey(e) {
   }
 }
 
-// ── 文本框自动增高 ──
+// ── 输入框自适应高度 ──
 function autoResize(el) {
   el.style.height = 'auto';
   el.style.height = Math.min(el.scrollHeight, 120) + 'px';
 }
 
-// ── 启动：恢复历史记录，或显示欢迎消息 ──
+// ── 启动 ──
 (function init() {
   const history = loadHistory();
   if (history.length > 0) {
     history.forEach(m => {
-      // 直接用 appendMsg 的核心渲染（跳过写入 localStorage，因为已经在了）
-      const main = document.getElementById('chat');
+      const mainEl = document.getElementById('chat');
       const div = document.createElement('div');
       div.className = `msg ${m.role}`;
+      const ava = m.role === 'user' ? '👤' : '🤖';
       div.innerHTML = `
-        <div class="avatar">${m.role === 'user' ? '👤' : '🤖'}</div>
+        <div class="avatar">${ava}</div>
         <div class="bubble">${escapeHtml(m.text)}</div>
       `;
-      main.appendChild(div);
+      mainEl.appendChild(div);
     });
     document.getElementById('chat').scrollTop = document.getElementById('chat').scrollHeight;
   } else {
-    appendMsg('agent', '你好！我是你的 AI 助手，可以帮你查天气、回答问题。有什么想聊的？😊');
+    const mainEl = document.getElementById('chat');
+    const welcome = document.createElement('div');
+    welcome.className = 'welcome';
+    welcome.innerHTML = `
+      <div class="wl-icon">🤖</div>
+      <h2>你好，我是 AI 智能体</h2>
+      <p>我可以查天气、看新闻、算数学。试试问我点什么吧！</p>
+    `;
+    mainEl.appendChild(welcome);
   }
 })();
 </script>

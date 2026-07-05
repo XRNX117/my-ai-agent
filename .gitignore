@@ -3,3 +3,4 @@ venv/
 __pycache__
 chat.db
 data/
+chroma_db/
