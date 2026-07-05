@@ -296,12 +296,14 @@ async function send() {
     });
     if (!resp.ok) throw new Error(`服务器返回 ${resp.status} ${resp.statusText}`);
     const data = await resp.json();
-    // 如果服务端返回了新的 session_id（首次），存起来
-    if (data.session_id) localStorage.setItem(SESSION_KEY, data.session_id);
+    // 检查服务端状态
+    if (data.status === "error") {
+      throw new Error(data.response);
+    }
 
     // 移除 typing 占位，渲染真实回复
     typing.remove();
-    appendMsg('agent', data.reply);
+    appendMsg('agent', data.response);
   } catch (err) {
     typing.remove();
     console.error('请求失败:', err);
