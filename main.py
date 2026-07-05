@@ -45,8 +45,12 @@ async def chat_endpoint(req: ChatRequest) -> ChatResponse:
     session_id = req.session_id or str(uuid.uuid4())
 
     try:
-        reply = chat_with_agent(req.message, session_id)
-        return ChatResponse(response=reply, status="success")
+        reply, thoughts = chat_with_agent(req.message, session_id)
+        return ChatResponse(
+            response=reply,
+            status="success",
+            thoughts=[t for t in thoughts if t.get("thought") or t.get("action")],
+        )
     except Exception as e:
         return ChatResponse(
             response=f"服务异常：{e}",
