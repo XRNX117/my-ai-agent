@@ -1,18 +1,21 @@
 """
 FastAPI Web 服务 —— 提供 /chat 接口，对接 AI 智能体。
-支持多轮对话记忆：通过 session_id 区分不同会话。
+支持多轮对话记忆：通过 session_id 区分不同会话（数据持久化到 SQLite）。
 内置前端页面，浏览器直接访问 http://localhost:8000 即可使用。
 """
 
 import uuid
 from pathlib import Path
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 from pydantic import BaseModel
-from agent import chat_with_agent
 
-app = FastAPI(title="AI 智能体", version="2.0.0")
+from agent import chat_with_agent
+from database import get_active_session_count
+
+app = FastAPI(title="AI 智能体", version="3.0.0")
 
 # 允许跨域（方便前端开发调试）
 app.add_middleware(
@@ -25,11 +28,6 @@ app.add_middleware(
 
 # 预加载前端页面
 INDEX_HTML = (Path(__file__).parent / "index.html").read_text(encoding="utf-8")
-
-# ----------------------------------------------------------------
-# 会话存储（内存字典，服务重启后清空）
-# ----------------------------------------------------------------
-sessions: dict[str, list] = {}
 
 
 class ChatRequest(BaseModel):
@@ -50,21 +48,10 @@ async def chat_endpoint(req: ChatRequest):
     多轮对话：
     - 首次请求无需传 session_id，服务端自动创建并返回。
     - 后续请求带上返回的 session_id 即可延续对话。
+    - 对话历史持久化到 SQLite 数据库，服务重启不丢失。
     """
-    # 取出或创建会话历史
-    session_id = req.session_id
-    if session_id and session_id in sessions:
-        messages = sessions[session_id]
-    else:
-        session_id = str(uuid.uuid4())
-        messages = None  # chat_with_agent 会自动创建新会话
-
-    # 调用核心逻辑
-    reply, updated_messages = chat_with_agent(req.message, messages)
-
-    # 保存更新后的对话历史
-    sessions[session_id] = updated_messages
-
+    session_id = req.session_id or str(uuid.uuid4())
+    reply = chat_with_agent(req.message, session_id)
     return ChatResponse(reply=reply, session_id=session_id)
 
 
@@ -77,4 +64,8 @@ async def index():
 @app.get("/health")
 async def health_check():
     """健康检查接口"""
-    return {"status": "ok", "active_sessions": len(sessions)}
+    return {
+        "status": "ok",
+        "active_sessions": get_active_session_count(),
+        "version": "3.0.0",
+    }

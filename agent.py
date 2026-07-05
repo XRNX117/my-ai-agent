@@ -1,6 +1,9 @@
 """
 AI 智能体核心模块 —— 使用 OpenAI SDK 连接 DeepSeek API，支持 Function Calling。
-支持多轮对话记忆：调用者维护 messages 列表，每次传入并接收更新后的列表。
+支持多轮对话记忆：通过 session_id 从数据库加载历史，每次对话自动持久化。
+
+工具函数统一在 tools.py 中管理，持久化逻辑在 database.py 中。
+本模块只负责与大模型的交互逻辑。
 """
 
 import json
@@ -14,6 +17,10 @@ if sys.platform == "win32":
 from openai import OpenAI
 from dotenv import load_dotenv
 
+from tools import TOOLS, TOOL_MAP
+from database import get_recent_messages, save_message
+from config import HISTORY_LIMIT
+
 # 加载 .env 文件中的环境变量
 load_dotenv()
 
@@ -24,70 +31,37 @@ client = OpenAI(
 )
 
 # 系统提示词
-SYSTEM_PROMPT = "你是一个乐于助人的AI助手。当用户询问天气时，请调用 get_weather 工具获取信息后，用自然语言告知用户。"
+SYSTEM_PROMPT = (
+    "你是一个乐于助人的 AI 助手。"
+    "当用户询问天气时，请调用 get_weather 工具获取信息后，用自然语言告知用户。"
+    "当用户想看新闻、了解时事热点时，请调用 get_news 工具获取新闻列表。"
+    "当用户需要算数、数学计算时，请调用 calculate 工具计算结果。"
+)
 
 
-def get_weather(city: str) -> str:
-    """模拟天气查询，返回固定的天气信息。"""
-    weather_data = {
-        "北京": "【模拟】北京今天晴，22度，微风",
-        "上海": "【模拟】上海今天多云，25度，东南风3级",
-        "广州": "【模拟】广州今天阵雨，28度，南风2级",
-        "深圳": "【模拟】深圳今天晴，29度，西南风3级",
-        "杭州": "【模拟】杭州今天阴，20度，东北风2级",
-    }
-    return weather_data.get(city, f"【模拟】{city}今天多云，23度，微风")
-
-
-# ----------------------------------------------------------------
-# 工具定义（OpenAI Function Calling 格式）
-# ----------------------------------------------------------------
-TOOLS = [
-    {
-        "type": "function",
-        "function": {
-            "name": "get_weather",
-            "description": "查询指定城市的实时天气信息",
-            "parameters": {
-                "type": "object",
-                "properties": {
-                    "city": {
-                        "type": "string",
-                        "description": "城市名称，例如：北京、上海、广州",
-                    },
-                },
-                "required": ["city"],
-            },
-        },
-    }
-]
-
-# 工具名称 → 实际可调用函数的映射
-TOOL_MAP = {
-    "get_weather": get_weather,
-}
-
-
-def chat_with_agent(user_query: str, messages: list | None = None) -> tuple[str, list]:
+def chat_with_agent(user_query: str, session_id: str) -> str:
     """
-    多轮对话：让大模型根据用户输入决定是否调用工具，并返回最终回复。
+    多轮对话：从数据库加载历史，与 LLM 交互，并将本轮对话持久化。
 
     参数:
         user_query:  用户当前输入
-        messages:    历史对话列表（OpenAI 格式）。传 None 则自动创建新会话。
+        session_id:  会话唯一标识（首次由调用方生成 UUID，后续沿用）
 
     返回:
-        (reply, updated_messages): 助手回复 + 更新后的完整对话历史。
-        调用者保存 updated_messages，下次继续传入即可延续对话。
+        reply:  AI 助手的自然语言回复
     """
-    # ---------- 初始化或延续对话 ----------
-    if messages is None:
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    # ── 1. 从 DB（经缓存）加载最近历史 ──
+    recent = get_recent_messages(session_id, limit=HISTORY_LIMIT)
 
-    # 追加当前用户消息
-    messages.append({"role": "user", "content": user_query})
+    # ── 2. 构建发送给 LLM 的消息列表 ──
+    messages = [{"role": "system", "content": SYSTEM_PROMPT}]
+    messages.extend(recent)                         # 历史上下文
+    messages.append({"role": "user", "content": user_query})  # 当前问题
 
-    # ---------- 第一次请求：让模型决定是否调用工具 ----------
+    # ── 3. 持久化用户消息 ──
+    save_message(session_id, "user", user_query)
+
+    # ── 4. 第一次请求：让模型决定是否调用工具 ──
     response = client.chat.completions.create(
         model="deepseek-chat",
         messages=messages,
@@ -98,9 +72,9 @@ def chat_with_agent(user_query: str, messages: list | None = None) -> tuple[str,
     choice = response.choices[0]
     message = choice.message
 
-    # ---------- 如果模型要调用工具，就在这里执行 ----------
+    # ── 5. 如果模型要调用工具，就在这里执行 ──
     if message.tool_calls:
-        # 将模型的工具调用请求加入对话历史
+        # 将模型的工具调用请求加入对话
         messages.append(message.model_dump())
 
         for tool_call in message.tool_calls:
@@ -109,21 +83,20 @@ def chat_with_agent(user_query: str, messages: list | None = None) -> tuple[str,
 
             print(f"[Agent] 调用工具: {func_name}({func_args})")
 
-            # 执行对应的 Python 函数
             func = TOOL_MAP.get(func_name)
             if func:
                 result = func(**func_args)
             else:
                 result = f"未知工具: {func_name}"
 
-            # 将工具执行结果以 tool 角色加入对话
+            # 将工具执行结果加入对话（不持久化——工具调用是临时的）
             messages.append({
                 "role": "tool",
                 "tool_call_id": tool_call.id,
                 "content": result,
             })
 
-        # ---------- 第二次请求：让模型基于工具结果生成最终回复 ----------
+        # 第二次请求：让模型基于工具结果生成最终回复
         final_response = client.chat.completions.create(
             model="deepseek-chat",
             messages=messages,
@@ -131,36 +104,46 @@ def chat_with_agent(user_query: str, messages: list | None = None) -> tuple[str,
         )
         reply = final_response.choices[0].message.content
     else:
-        # ---------- 不需要工具，直接返回模型回复 ----------
+        # ── 6. 不需要工具，直接使用模型回复 ──
         reply = message.content
 
-    # 将助手回复加入对话历史
-    messages.append({"role": "assistant", "content": reply})
+    # ── 7. 持久化 AI 回复 ──
+    save_message(session_id, "assistant", reply)
 
-    return reply, messages
+    return reply
 
 
 # ----------------------------------------------------------------
 # 本地测试 —— 多轮对话 demo
 # ----------------------------------------------------------------
 if __name__ == "__main__":
+    import uuid
+
     print("=" * 50)
-    print("AI 智能体 - 多轮对话测试")
+    print("AI 智能体 - 多轮对话测试（数据库持久化）")
     print("=" * 50)
 
-    # 一个连续对话：模型需要记住上下文
+    # 使用固定 session_id 模拟一个连续对话
+    test_sid = str(uuid.uuid4())
+    print(f"测试会话 ID: {test_sid[:8]}...")
+
     conversation = [
         "查一下北京的天气",
-        "那上海呢？",             # ← 依赖前文，模型应理解"那…呢"指天气
+        "那上海呢？",                     # ← 依赖前文，模型应理解"那…呢"指天气
+        "今天有什么热门新闻？",            # ← 触发 get_news
+        "帮我算一下 1234 * 5678 等于多少", # ← 触发 calculate
         "帮我总结一下刚才查过的两个城市分别什么天气",
     ]
 
-    messages = None  # 首次传 None，自动创建新会话
-
     for query in conversation:
         print(f"\n[User]: {query}")
-        reply, messages = chat_with_agent(query, messages)
+        reply = chat_with_agent(query, test_sid)
         print(f"[Agent]: {reply}")
         print("-" * 50)
 
-    print(f"\n对话结束，共 {len(messages)} 条消息（含 system prompt）")
+    # 验证持久化：再次读取历史
+    all_history = get_recent_messages(test_sid, limit=100)
+    user_count = sum(1 for m in all_history if m["role"] == "user")
+    assistant_count = sum(1 for m in all_history if m["role"] == "assistant")
+    print(f"\n持久化验证：数据库中共 {len(all_history)} 条消息 "
+          f"({user_count} user, {assistant_count} assistant)")
