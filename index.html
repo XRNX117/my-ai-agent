@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>AI 智能体</title>
+<style>
+  :root {
+    --bg: #f7f7f8;
+    --card: #ffffff;
+    --border: #e5e5e5;
+    --text: #1f1f1f;
+    --sub: #6b6b6b;
+    --user-bubble: #e8f0fe;
+    --agent-bubble: #ffffff;
+    --accent: #10a37f;
+    --accent-hover: #0e8c6b;
+    --danger: #ef4444;
+    --radius: 20px;
+    --shadow: 0 1px 3px rgba(0,0,0,.08), 0 1px 2px rgba(0,0,0,.06);
+  }
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    font-family: -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+    background: var(--bg);
+    color: var(--text);
+    height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  /* ── 顶栏 ── */
+  header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 20px;
+    background: var(--card);
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  header h1 { font-size: 18px; font-weight: 600; }
+  header button {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 8px 18px;
+    border: 2px solid #d0d0d0;
+    border-radius: 24px;
+    background: #fff;
+    cursor: pointer;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    transition: all .2s ease;
+    white-space: nowrap;
+  }
+  header button:hover {
+    background: #f5f5f5;
+    border-color: #b0b0b0;
+    transform: translateY(-1px);
+    box-shadow: 0 2px 8px rgba(0,0,0,.08);
+  }
+  header button:active { transform: translateY(0); }
+  header button svg { width: 15px; height: 15px; flex-shrink: 0; }
+
+  /* ── 聊天区 ── */
+  main {
+    flex: 1;
+    overflow-y: auto;
+    padding: 20px 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+
+  .msg {
+    display: flex;
+    gap: 12px;
+    padding: 12px 20px;
+    animation: fadeIn .25s ease;
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } }
+
+  .msg .avatar {
+    width: 32px; height: 32px; border-radius: 4px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 16px; flex-shrink: 0;
+  }
+  .msg.user .avatar { background: #d1e7dd; }
+  .msg.agent .avatar { background: #10a37f; color: #fff; }
+
+  .msg .bubble {
+    max-width: 85%;
+    padding: 10px 16px;
+    border-radius: 12px;
+    font-size: 15px;
+    line-height: 1.65;
+    word-break: break-word;
+  }
+  .msg.user .bubble {
+    background: var(--user-bubble);
+    border-bottom-right-radius: 4px;
+  }
+  .msg.agent .bubble {
+    background: var(--agent-bubble);
+    border: 1px solid var(--border);
+    border-bottom-left-radius: 4px;
+  }
+
+  .agent-typing .bubble {
+    color: var(--sub);
+    font-style: italic;
+  }
+
+  /* ── 底部输入区 ── */
+  footer {
+    padding: 12px 20px 20px;
+    background: var(--bg);
+    position: sticky;
+    bottom: 0;
+  }
+  .input-wrap {
+    display: flex;
+    align-items: flex-end;
+    gap: 10px;
+    background: var(--card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 8px 8px 8px 18px;
+    box-shadow: var(--shadow);
+  }
+  .input-wrap textarea {
+    flex: 1;
+    border: none;
+    outline: none;
+    resize: none;
+    font-size: 15px;
+    font-family: inherit;
+    line-height: 1.5;
+    max-height: 120px;
+    background: transparent;
+    color: var(--text);
+    padding: 6px 0;
+  }
+  .input-wrap textarea::placeholder { color: #aaa; }
+  .input-wrap button {
+    width: 38px; height: 38px;
+    border-radius: 50%;
+    border: none;
+    background: var(--text);
+    color: #fff;
+    cursor: pointer;
+    flex-shrink: 0;
+    display: flex; align-items: center; justify-content: center;
+    transition: background .15s, opacity .15s;
+  }
+  .input-wrap button:hover { background: #333; }
+  .input-wrap button:disabled { opacity: .35; cursor: not-allowed; }
+  .input-wrap button svg { width: 18px; height: 18px; }
+
+  /* ── 小屏适配 ── */
+  @media (max-width: 500px) {
+    .msg { padding: 10px 12px; }
+    .msg .bubble { max-width: 92%; }
+    footer { padding: 8px 10px 14px; }
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>AI 智能体</h1>
+  <button onclick="newSession()" title="清空聊天记录并开启新对话">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M12 5v14M5 12h14"/>
+    </svg>
+    新对话
+  </button>
+</header>
+
+<main id="chat"></main>
+
+<footer>
+  <div class="input-wrap">
+    <textarea
+      id="input"
+      rows="1"
+      placeholder="输入消息，例如：查一下北京的天气"
+      onkeydown="handleKey(event)"
+      oninput="autoResize(this)"
+    ></textarea>
+    <button id="sendBtn" onclick="send()" title="发送">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <path d="M5 12h14M12 5l7 7-7 7"/>
+      </svg>
+    </button>
+  </div>
+</footer>
+
+<script>
+// ── 本地存储 key ──
+const SESSION_KEY = 'ai_agent_session_id';
+const HISTORY_KEY = 'ai_agent_chat_history';
+
+// ── 聊天记录持久化 ──
+function loadHistory() {
+  try {
+    const raw = localStorage.getItem(HISTORY_KEY);
+    return raw ? JSON.parse(raw) : [];
+  } catch { return []; }
+}
+
+function saveHistory(msgs) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(msgs));
+}
+
+// ── session 管理 ──
+function getSid() {
+  let sid = localStorage.getItem(SESSION_KEY);
+  if (!sid) {
+    sid = crypto.randomUUID();
+    localStorage.setItem(SESSION_KEY, sid);
+  }
+  return sid;
+}
+
+function newSession() {
+  localStorage.removeItem(SESSION_KEY);
+  localStorage.removeItem(HISTORY_KEY);
+  location.reload();
+}
+
+// ── 渲染消息（同时写入 localStorage）──
+function appendMsg(role, text) {
+  const main = document.getElementById('chat');
+  const div = document.createElement('div');
+  div.className = `msg ${role}`;
+  div.innerHTML = `
+    <div class="avatar">${role === 'user' ? '👤' : '🤖'}</div>
+    <div class="bubble">${escapeHtml(text)}</div>
+  `;
+  main.appendChild(div);
+  main.scrollTop = main.scrollHeight;
+
+  // 保存到 localStorage（欢迎消息不存——只有 user/agent 角色且非 typing 才存）
+  if (role === 'user' || role === 'agent') {
+    const history = loadHistory();
+    history.push({ role, text });
+    saveHistory(history);
+  }
+}
+
+function escapeHtml(s) {
+  const map = { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' };
+  return s.replace(/[&<>"]/g, c => map[c]);
+}
+
+// ── 发送消息 ──
+async function send() {
+  const input = document.getElementById('input');
+  const btn = document.getElementById('sendBtn');
+  const text = input.value.trim();
+  if (!text) return;
+
+  // 渲染用户消息
+  appendMsg('user', text);
+  input.value = '';
+  autoResize(input);
+  btn.disabled = true;
+
+  // 渲染"正在输入…"占位
+  const main = document.getElementById('chat');
+  const typing = document.createElement('div');
+  typing.className = 'msg agent agent-typing';
+  typing.id = 'typing';
+  typing.innerHTML = `
+    <div class="avatar">🤖</div>
+    <div class="bubble">思考中…</div>
+  `;
+  main.appendChild(typing);
+  main.scrollTop = main.scrollHeight;
+
+  try {
+    const sid = getSid();
+    const resp = await fetch('/chat', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ message: text, session_id: sid }),
+    });
+    if (!resp.ok) throw new Error(`服务器返回 ${resp.status} ${resp.statusText}`);
+    const data = await resp.json();
+    // 如果服务端返回了新的 session_id（首次），存起来
+    if (data.session_id) localStorage.setItem(SESSION_KEY, data.session_id);
+
+    // 移除 typing 占位，渲染真实回复
+    typing.remove();
+    appendMsg('agent', data.reply);
+  } catch (err) {
+    typing.remove();
+    console.error('请求失败:', err);
+    const detail = err.message || String(err);
+    appendMsg('agent', `⚠️ 请求失败：${detail}`);
+  } finally {
+    btn.disabled = false;
+    input.focus();
+  }
+}
+
+// ── 键盘事件：Enter 发送，Shift+Enter 换行 ──
+function handleKey(e) {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    send();
+  }
+}
+
+// ── 文本框自动增高 ──
+function autoResize(el) {
+  el.style.height = 'auto';
+  el.style.height = Math.min(el.scrollHeight, 120) + 'px';
+}
+
+// ── 启动：恢复历史记录，或显示欢迎消息 ──
+(function init() {
+  const history = loadHistory();
+  if (history.length > 0) {
+    history.forEach(m => {
+      // 直接用 appendMsg 的核心渲染（跳过写入 localStorage，因为已经在了）
+      const main = document.getElementById('chat');
+      const div = document.createElement('div');
+      div.className = `msg ${m.role}`;
+      div.innerHTML = `
+        <div class="avatar">${m.role === 'user' ? '👤' : '🤖'}</div>
+        <div class="bubble">${escapeHtml(m.text)}</div>
+      `;
+      main.appendChild(div);
+    });
+    document.getElementById('chat').scrollTop = document.getElementById('chat').scrollHeight;
+  } else {
+    appendMsg('agent', '你好！我是你的 AI 助手，可以帮你查天气、回答问题。有什么想聊的？😊');
+  }
+})();
+</script>
+
+</body>
+</html>
